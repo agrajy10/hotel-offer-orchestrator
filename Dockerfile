@@ -3,27 +3,28 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 
-# Install dependencies only when needed
-FROM base AS deps
+# Install all deps (incl. dev) for local hot-reload via tsx watch
+FROM base AS dev
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev || npm install --omit=dev
+RUN npm ci
+COPY tsconfig.json ./
+EXPOSE 3000
+CMD ["npx", "tsx", "watch", "src/server.ts"]
 
-# Build production image
+# Production build
+FROM base AS build
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
 FROM base AS runner
 ENV NODE_ENV=production
-
-# Run as non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json ./
-COPY src ./src
-
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
 USER appuser
-
 EXPOSE 3000
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1
-
-CMD ["node", "src/server.js"]
+CMD ["node", "dist/server.js"]

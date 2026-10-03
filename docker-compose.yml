@@ -1,17 +1,16 @@
 services:
   api:
-    build: .
-    image: express-docker:latest
-    container_name: express-docker-api
+    build:
+      context: .
+      target: dev
+    image: hotel-offer-orchestrator:dev
+    container_name: hotel-offer-orchestrator-api
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - PORT=3000
+    volumes:
+      - ./src:/app/src
+      - ./tsconfig.json:/app/tsconfig.json
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/health"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 5s

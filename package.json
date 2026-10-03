@@ -1,14 +1,19 @@
 {
-  "name": "express-docker",
+  "name": "hotel-offer-orchestrator",
   "version": "1.0.0",
-  "description": "Express.js application with Docker",
-  "main": "src/server.js",
+  "description": "Hotel Offer Orchestrator — Express, Temporal, Redis",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "build": "tsc -p tsconfig.json",
+    "dev:api": "tsx watch src/server.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "start:api": "node dist/server.js",
+    "start:worker": "node dist/worker.js"
   },
   "keywords": [
     "express",
+    "temporal",
+    "redis",
     "docker"
   ],
   "author": "",
@@ -18,7 +23,15 @@
     "@temporalio/client": "^1.24.0",
     "@temporalio/worker": "^1.24.0",
     "@temporalio/workflow": "^1.24.0",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "ioredis": "^5.6.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
   },
   "engines": {
     "node": ">=20"
