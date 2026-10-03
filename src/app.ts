@@ -1,4 +1,5 @@
 import express, { Express } from 'express';
+import hotelsRouter from './routes/hotels';
 import suppliersRouter from './routes/suppliers';
 
 export const createApp = (): Express => {
@@ -10,6 +11,7 @@ export const createApp = (): Express => {
     res.json({ message: 'Hotel Offer Orchestrator' });
   });
 
+  app.use(hotelsRouter);
   app.use(suppliersRouter);
 
   return app;
