@@ -1,4 +1,4 @@
-import type { SupplierHotel } from '../types/hotel';
+import type { SupplierHotel } from '../routes/validators';
 
 export const supplierAHotels: SupplierHotel[] = [
   { hotelId: 'a1', name: 'Holtin', price: 6000, city: 'delhi', commissionPct: 10 },

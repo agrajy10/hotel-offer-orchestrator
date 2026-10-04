@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import { saveOffers } from '../services/redis';
+import { supplierHotelsResponseSchema } from '../routes/validators';
 import type { BestOffer, SupplierHotel } from '../types/hotel';
 
 const fetchSupplierHotels = async (
@@ -13,13 +14,16 @@ const fetchSupplierHotels = async (
     throw new Error(`Supplier ${supplier} request failed with status ${response.status}`);
   }
 
-  const data = (await response.json()) as SupplierHotel[];
+  const json: unknown = await response.json();
+  const parsed = supplierHotelsResponseSchema.safeParse(json);
 
-  if (!Array.isArray(data)) {
-    throw new Error(`Supplier ${supplier} returned non-array payload`);
+  if (!parsed.success) {
+    throw new Error(
+      `Supplier ${supplier} returned invalid payload: ${JSON.stringify(parsed.error.issues)}`
+    );
   }
 
-  return data;
+  return parsed.data;
 };
 
 export const fetchFromSupplierA = async (city: string): Promise<SupplierHotel[]> => {

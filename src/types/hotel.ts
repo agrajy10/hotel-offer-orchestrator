@@ -1,10 +1,6 @@
-export interface SupplierHotel {
-  hotelId: string;
-  name: string;
-  price: number;
-  city: string;
-  commissionPct: number;
-}
+import type { SupplierHotel } from '../routes/validators';
+
+export type { SupplierHotel };
 
 export interface BestOffer {
   name: string;

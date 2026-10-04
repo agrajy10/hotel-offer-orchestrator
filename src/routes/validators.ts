@@ -21,5 +21,16 @@ export const hotelsQuerySchema = z
     }
   );
 
+export const supplierHotelSchema = z.object({
+  hotelId: z.string().min(1),
+  name: z.string().min(1),
+  price: z.number().finite().nonnegative(),
+  city: z.string().min(1),
+  commissionPct: z.number().min(0).max(100),
+});
+
+export const supplierHotelsResponseSchema = z.array(supplierHotelSchema);
+
 export type CityQuery = z.infer<typeof cityQuerySchema>;
 export type HotelsQuery = z.infer<typeof hotelsQuerySchema>;
+export type SupplierHotel = z.infer<typeof supplierHotelSchema>;
