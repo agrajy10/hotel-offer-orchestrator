@@ -14,7 +14,7 @@
 - README with local setup and deployment
 - Postman collection (happy path, empty city, price filter, validation)
 
-### Not covered (optional / bonus in requirements.md)
+### Not covered
 
 - `/health` endpoint reporting supplier health
 - Structured logging & error handling in activities/workflows
