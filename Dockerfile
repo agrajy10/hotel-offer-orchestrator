@@ -1,9 +1,8 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS base
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
 
-# Install all deps (incl. dev) for local hot-reload via tsx watch
 FROM base AS dev
 COPY package.json package-lock.json* ./
 RUN npm ci
@@ -11,7 +10,6 @@ COPY tsconfig.json ./
 EXPOSE 3000
 CMD ["npx", "tsx", "watch", "src/server.ts"]
 
-# Production build
 FROM base AS build
 COPY package.json package-lock.json* ./
 RUN npm ci
@@ -21,7 +19,7 @@ RUN npm run build
 
 FROM base AS runner
 ENV NODE_ENV=production
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN groupadd -S appgroup && useradd -S appuser -G appgroup
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist

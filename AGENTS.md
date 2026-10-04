@@ -39,13 +39,14 @@ Client → Express API → Redis ZRANGEBYSCORE  (when minPrice/maxPrice provided
 
 | Service | Image / build | Command / role | Port |
 |---------|----------------|----------------|------|
-| `api` | build `.` | `node dist/server.js` | 3000 |
-| `worker` | same image | `node dist/worker.js` | — |
+| `api` | build `dev` | `npx tsx watch src/server.ts` | 3000 |
+| `worker` | same image | `npx tsx watch src/worker.ts` | — |
 | `redis` | `redis:7-alpine` | cache + price queries | 6379 |
+| `postgresql` | `postgres:15-alpine` | Temporal DB | 5433→5432 |
 | `temporal` | `temporalio/auto-setup` | Temporal server | 7233 |
-| `postgresql` | `postgres:15-alpine` | Temporal DB | 5432 |
-| `minio` | `minio/minio` | Temporal visibility | 9000 |
 | `temporal-ui` | `temporalio/ui` | debug UI | 8080 |
+
+MinIO is intentionally omitted — not required for workflow history on this project.
 
 ### Environment variables
 
@@ -55,6 +56,7 @@ Client → Express API → Redis ZRANGEBYSCORE  (when minPrice/maxPrice provided
 | `TEMPORAL_ADDRESS` | `temporal:7233` | api, worker |
 | `TEMPORAL_NAMESPACE` | `default` | api, worker |
 | `REDIS_URL` | `redis://redis:6379` | api, worker (activity) |
+| `SUPPLIER_BASE_URL` | `http://api:3000` (worker) / `http://127.0.0.1:3000` (api) | activities |
 | `TASK_QUEUE` | `hotel-offers` | worker, client |
 
 ## Project structure
@@ -148,22 +150,25 @@ hotel-offer-orchestrator/
 |-----|------|----------|
 | `hotels:{city}:prices` | ZSET | member = hotel name, score = price |
 | `hotels:{city}:details` | HASH | field = hotel name, value = JSON `BestOffer` |
+| `hotels:{city}:cached` | STRING | `"1"` — city fetched; present even when offers = `[]` |
 
-- Save: `ZADD` + `HSET` (pipeline)
-- Filter: `ZRANGEBYSCORE hotels:{city}:prices min max` then `HGET` details
+- Save (workflow activity): `DEL` + `ZADD` + `HSET` + `SET cached 1` (pipeline)
+- Filter: `ZRANGEBYSCORE hotels:{city}:prices min max` then `HMGET` details
+- Full list on HIT: `ZRANGE prices 0 -1` then `HMGET` details
+- Cache presence: `EXISTS hotels:{city}:cached` (not `ZCARD` — empty cities are HITs)
 
 ## API behavior
 
 | Endpoint | Behavior |
 |----------|----------|
-| `GET /api/hotels?city=delhi` | Execute Temporal workflow (workflowId e.g. `hotels-{city}`), return result |
-| `GET /api/hotels?city=delhi&minPrice=5000&maxPrice=6500` | Ensure Redis data (run workflow if empty), filter via Redis score range |
-| `GET /api/hotels?city=london` | Workflow → `[]` |
+| `GET /api/hotels?city=delhi` | Redis first; MISS → Temporal workflow (workflow saves Redis); HIT → return cached list |
+| `GET /api/hotels?city=delhi&minPrice=5000&maxPrice=6500` | Same cache rule; HIT → filter in Redis via ZRANGEBYSCORE |
+| `GET /api/hotels?city=london` | MISS → workflow → cache `[]` + marker; later HIT → `[]` without Temporal |
 | `GET /supplierA/hotels?city=...` | Mock JSON for supplier A |
 | `GET /supplierB/hotels?city=...` | Mock JSON for supplier B |
 
-Unfiltered path always goes through Temporal (no Redis short-circuit).
-Filtered path uses Redis after ensuring data exists for that city.
+Both filtered and unfiltered paths are **cache-first**. Workflow runs only on MISS.
+Workflow activity remains responsible for writing Redis. Filtered subsets are never stored.
 
 ## TypeScript conventions
 
