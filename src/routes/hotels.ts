@@ -2,7 +2,7 @@ import { Client, Connection } from '@temporalio/client';
 import { Router, type Request, type Response } from 'express';
 import { hotelOffersWorkflow } from '../workflows/hotelOffers';
 import { env } from '../config/env';
-import { getOffersByPriceRange, hasOffers } from '../services/redis';
+import { getCachedOffers, getOffersByPriceRange, hasCityCache } from '../services/redis';
 import { hotelsQuerySchema } from './validators';
 import type { BestOffer } from '../types/hotel';
 
@@ -50,18 +50,19 @@ router.get('/api/hotels', async (req: Request, res: Response): Promise<void> => 
   const isFiltered = minPrice !== undefined || maxPrice !== undefined;
 
   try {
-    if (!isFiltered) {
-      const offers = await runHotelOffersWorkflow(normalizedCity);
+    const cacheHit = await hasCityCache(normalizedCity);
+
+    if (!cacheHit) {
+      await runHotelOffersWorkflow(normalizedCity);
+    }
+
+    if (isFiltered) {
+      const offers = await getOffersByPriceRange(normalizedCity, minPrice, maxPrice);
       res.json(offers);
       return;
     }
 
-    const alreadySaved = await hasOffers(normalizedCity);
-    if (!alreadySaved) {
-      await runHotelOffersWorkflow(normalizedCity);
-    }
-
-    const offers = await getOffersByPriceRange(normalizedCity, minPrice, maxPrice);
+    const offers = await getCachedOffers(normalizedCity);
     res.json(offers);
   } catch (error) {
     console.error('Failed to fetch hotels:', error);

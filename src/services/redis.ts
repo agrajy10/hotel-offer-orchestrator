@@ -16,12 +16,14 @@ export const getRedisClient = (): Redis => {
 
 export const pricesKey = (city: string): string => `hotels:${city.toLowerCase()}:prices`;
 export const detailsKey = (city: string): string => `hotels:${city.toLowerCase()}:details`;
+export const cachedKey = (city: string): string => `hotels:${city.toLowerCase()}:cached`;
 
 export const saveOffers = async (city: string, offers: BestOffer[]): Promise<void> => {
   const redis = getRedisClient();
   const normalizedCity = city.toLowerCase();
   const pKey = pricesKey(normalizedCity);
   const dKey = detailsKey(normalizedCity);
+  const cKey = cachedKey(normalizedCity);
 
   const pipeline = redis.pipeline();
   pipeline.del(pKey);
@@ -31,6 +33,8 @@ export const saveOffers = async (city: string, offers: BestOffer[]): Promise<voi
     pipeline.zadd(pKey, offer.price, offer.name);
     pipeline.hset(dKey, offer.name, JSON.stringify(offer));
   }
+
+  pipeline.set(cKey, '1');
 
   const results = await pipeline.exec();
   if (!results) {
@@ -42,6 +46,28 @@ export const saveOffers = async (city: string, offers: BestOffer[]): Promise<voi
       throw err;
     }
   }
+};
+
+export const hasCityCache = async (city: string): Promise<boolean> => {
+  const redis = getRedisClient();
+  const exists = await redis.exists(cachedKey(city));
+  return exists === 1;
+};
+
+export const getCachedOffers = async (city: string): Promise<BestOffer[]> => {
+  const redis = getRedisClient();
+  const normalizedCity = city.toLowerCase();
+
+  const names = await redis.zrange(pricesKey(normalizedCity), 0, -1);
+  if (names.length === 0) {
+    return [];
+  }
+
+  const values = await redis.hmget(detailsKey(normalizedCity), ...names);
+  return values
+    .filter((value): value is string => value !== null)
+    .map((value) => JSON.parse(value) as BestOffer)
+    .sort((a, b) => a.price - b.price);
 };
 
 export const getOffersByPriceRange = async (
@@ -64,10 +90,4 @@ export const getOffersByPriceRange = async (
     .filter((value): value is string => value !== null)
     .map((value) => JSON.parse(value) as BestOffer)
     .sort((a, b) => a.price - b.price);
-};
-
-export const hasOffers = async (city: string): Promise<boolean> => {
-  const redis = getRedisClient();
-  const count = await redis.zcard(pricesKey(city));
-  return count > 0;
 };
