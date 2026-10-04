@@ -1,4 +1,4 @@
-import { Client, Connection } from '@temporalio/client';
+import { Client, Connection, WorkflowExecutionAlreadyStartedError } from '@temporalio/client';
 import { Router, type Request, type Response } from 'express';
 import { hotelOffersWorkflow } from '../workflows/hotelOffers';
 import { env } from '../config/env';
@@ -26,11 +26,21 @@ const getTemporalClient = async (): Promise<Client> => {
 
 const runHotelOffersWorkflow = async (city: string): Promise<BestOffer[]> => {
   const client = await getTemporalClient();
-  return client.workflow.execute(hotelOffersWorkflow, {
-    workflowId: `hotels-${city.toLowerCase()}`,
-    taskQueue: env.taskQueue,
-    args: [city.toLowerCase()],
-  });
+  const workflowId = `hotels-${city.toLowerCase()}`;
+
+  try {
+    return await client.workflow.execute(hotelOffersWorkflow, {
+      workflowId,
+      taskQueue: env.taskQueue,
+      args: [city.toLowerCase()],
+    });
+  } catch (error) {
+    if (error instanceof WorkflowExecutionAlreadyStartedError) {
+      const handle = client.workflow.getHandle(workflowId);
+      return handle.result();
+    }
+    throw error;
+  }
 };
 
 router.get('/api/hotels', async (req: Request, res: Response): Promise<void> => {
