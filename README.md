@@ -2,8 +2,6 @@
 
 ## Requirements coverage
 
-Compared to `requirements.md`:
-
 ### Covered
 
 - `GET /api/hotels?city=...` — Temporal-orchestrated supplier fetch + de-dupe
