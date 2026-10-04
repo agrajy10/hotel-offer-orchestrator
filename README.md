@@ -1,5 +1,27 @@
 # Hotel Offer Orchestrator
 
+## Requirements coverage
+
+Compared to `requirements.md`:
+
+### Covered
+
+- `GET /api/hotels?city=...` — Temporal-orchestrated supplier fetch + de-dupe
+- `GET /api/hotels?city=...&minPrice=&maxPrice=` — price filter from Redis
+- Mock Supplier APIs: `GET /supplierA/hotels`, `GET /supplierB/hotels`
+- De-dupe by hotel name (cheapest price wins; single-supplier hotels kept)
+- Parallel supplier calls via Temporal workflow
+- Deduped list saved in Redis (ZSET + HASH + cache flag)
+- Docker / Docker Compose (Redis, Temporal, worker, API)
+- README with local setup and deployment
+- Postman collection (happy path, empty city, price filter, validation)
+
+### Not covered (optional / bonus in requirements.md)
+
+- `/health` endpoint reporting supplier health
+- Structured logging & error handling in activities/workflows
+- Postman case: simulate one supplier being down
+
 ## Overview
 
 Aggregates hotel offers from two mock suppliers, de-duplicates by name (cheapest wins), and supports price-range filtering. Orchestration uses Temporal; results are cached in Redis.
