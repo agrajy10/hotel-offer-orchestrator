@@ -1,3 +1,4 @@
+import { ApplicationFailure } from '@temporalio/activity';
 import { env } from '../config/env';
 import { saveOffers } from '../services/redis';
 import { supplierHotelsResponseSchema } from '../routes/validators';
@@ -11,16 +12,22 @@ const fetchSupplierHotels = async (
   const response = await fetch(url);
 
   if (!response.ok) {
-    throw new Error(`Supplier ${supplier} request failed with status ${response.status}`);
+    throw ApplicationFailure.create({
+      message: `Supplier ${supplier} request failed with status ${response.status}`,
+      type: 'SupplierUnavailable',
+      nonRetryable: true,
+    });
   }
 
   const json: unknown = await response.json();
   const parsed = supplierHotelsResponseSchema.safeParse(json);
 
   if (!parsed.success) {
-    throw new Error(
-      `Supplier ${supplier} returned invalid payload: ${JSON.stringify(parsed.error.issues)}`
-    );
+    throw ApplicationFailure.create({
+      message: `Supplier ${supplier} returned invalid payload: ${JSON.stringify(parsed.error.issues)}`,
+      type: 'InvalidSupplierPayload',
+      nonRetryable: true,
+    });
   }
 
   return parsed.data;
