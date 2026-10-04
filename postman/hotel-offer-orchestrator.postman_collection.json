@@ -1,0 +1,373 @@
+{
+  "info": {
+    "_postman_id": "hotel-offer-orchestrator-0001",
+    "name": "Hotel Offer Orchestrator",
+    "description": "API tests for hotel offer aggregation: Temporal-orchestrated supplier fetch, Redis cache, and price filtering.\n\nBase URL variable: {{baseUrl}} (default http://localhost:3000)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Hotels API",
+      "item": [
+        {
+          "name": "Get hotels — city=delhi (happy path)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/hotels?city=delhi",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "hotels"],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "delhi",
+                  "description": "City with overlapping supplier inventory"
+                }
+              ]
+            },
+            "description": "Runs the Temporal workflow (or Redis cache HIT). Returns de-duplicated offers with cheaper price winning per hotel name.\n\nExpected: HTTP 200, non-empty array with name, price, supplier, commissionPct.\nOverlaps include Holtin (Supplier B cheaper) and Radison (Supplier A cheaper)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response is an array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+                  "const body = pm.response.json();",
+                  "pm.test('Has offers', () => pm.expect(body.length).to.be.above(0));",
+                  "pm.test('Offer shape', () => {",
+                  "  body.forEach((h) => {",
+                  "    pm.expect(h).to.have.property('name');",
+                  "    pm.expect(h).to.have.property('price');",
+                  "    pm.expect(h).to.have.property('supplier');",
+                  "    pm.expect(h).to.have.property('commissionPct');",
+                  "  });",
+                  "});",
+                  "const holtin = body.find((h) => h.name === 'Holtin');",
+                  "if (holtin) {",
+                  "  pm.test('Holtin cheaper from Supplier B', () => {",
+                  "    pm.expect(holtin.supplier).to.eql('Supplier B');",
+                  "    pm.expect(holtin.price).to.eql(5340);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get hotels — city=london (no results)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/hotels?city=london",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "hotels"],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "london",
+                  "description": "City with no supplier inventory"
+                }
+              ]
+            },
+            "description": "Both suppliers return empty lists for london. Workflow result and Redis cache store [].\n\nExpected: HTTP 200, empty array."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Empty array', () => pm.expect(pm.response.json()).to.eql([]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get hotels — price filter (minPrice + maxPrice)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/hotels?city=delhi&minPrice=5000&maxPrice=6500",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "hotels"],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "delhi"
+                },
+                {
+                  "key": "minPrice",
+                  "value": "5000",
+                  "description": "Inclusive lower bound"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "6500",
+                  "description": "Inclusive upper bound"
+                }
+              ]
+            },
+            "description": "Uses Redis cache when city data exists; filters via ZRANGEBYSCORE on hotels:{city}:prices.\nFiltered subsets are never written back to Redis.\n\nExpected: HTTP 200, only hotels with price between 5000 and 6500 inclusive, sorted by price."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Is array', () => pm.expect(body).to.be.an('array'));",
+                  "pm.test('All prices in range 5000-6500', () => {",
+                  "  body.forEach((h) => {",
+                  "    pm.expect(h.price).to.be.at.least(5000);",
+                  "    pm.expect(h.price).to.be.at.most(6500);",
+                  "  });",
+                  "});",
+                  "pm.test('Sorted by price ascending', () => {",
+                  "  for (let i = 1; i < body.length; i++) {",
+                  "    pm.expect(body[i].price).to.be.at.least(body[i - 1].price);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get hotels — invalid query (minPrice > maxPrice)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/hotels?city=delhi&minPrice=9000&maxPrice=1000",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "hotels"],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "delhi"
+                },
+                {
+                  "key": "minPrice",
+                  "value": "9000"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "1000"
+                }
+              ]
+            },
+            "description": "Zod validation rejects minPrice > maxPrice.\n\nExpected: HTTP 400 VALIDATION_ERROR."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Validation error body', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.error).to.eql('VALIDATION_ERROR');",
+                  "  pm.expect(b).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get hotels — missing city",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/hotels",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "hotels"]
+            },
+            "description": "city query param is required.\n\nExpected: HTTP 400 VALIDATION_ERROR."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Validation error', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Mock Suppliers",
+      "item": [
+        {
+          "name": "Supplier A — hotels for delhi",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/supplierA/hotels?city=delhi",
+              "host": ["{{baseUrl}}"],
+              "path": ["supplierA", "hotels"],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "delhi"
+                }
+              ]
+            },
+            "description": "Raw Supplier A inventory (not de-duplicated). Includes overlapping names with Supplier B.\n\nExpected: HTTP 200, array of hotel objects with hotelId, name, price, city, commissionPct."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Is array of hotels', () => {",
+                  "  pm.expect(body).to.be.an('array');",
+                  "  pm.expect(body.length).to.be.above(0);",
+                  "  body.forEach((h) => {",
+                  "    pm.expect(h).to.have.all.keys('hotelId', 'name', 'price', 'city', 'commissionPct');",
+                  "    pm.expect(h.city).to.eql('delhi');",
+                  "  });",
+                  "});",
+                  "const names = body.map((h) => h.name);",
+                  "pm.test('Has overlapping names with Supplier B', () => {",
+                  "  pm.expect(names).to.include('Holtin');",
+                  "  pm.expect(names).to.include('Radison');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Supplier B — hotels for delhi",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/supplierB/hotels?city=delhi",
+              "host": ["{{baseUrl}}"],
+              "path": ["supplierB", "hotels"],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "delhi"
+                }
+              ]
+            },
+            "description": "Raw Supplier B inventory (not de-duplicated).\n\nExpected: HTTP 200, array of hotel objects. Holtin should be cheaper than Supplier A (5340 vs 6000)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Is array of hotels', () => {",
+                  "  pm.expect(body).to.be.an('array');",
+                  "  pm.expect(body.length).to.be.above(0);",
+                  "});",
+                  "const holtin = body.find((h) => h.name === 'Holtin');",
+                  "pm.test('Holtin price from Supplier B', () => {",
+                  "  pm.expect(holtin).to.exist;",
+                  "  pm.expect(holtin.price).to.eql(5340);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Supplier A — hotels for london (empty)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/supplierA/hotels?city=london",
+              "host": ["{{baseUrl}}"],
+              "path": ["supplierA", "hotels"],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "london"
+                }
+              ]
+            },
+            "description": "No inventory for london.\n\nExpected: HTTP 200, empty array."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Empty array', () => pm.expect(pm.response.json()).to.eql([]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Supplier A — missing city",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/supplierA/hotels",
+              "host": ["{{baseUrl}}"],
+              "path": ["supplierA", "hotels"]
+            },
+            "description": "city is required on mock supplier endpoints.\n\nExpected: HTTP 400 VALIDATION_ERROR."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Validation error', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
